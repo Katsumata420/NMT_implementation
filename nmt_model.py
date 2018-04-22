@@ -82,15 +82,16 @@ class GRUDecoder(chainer.Chain):
     def __call__(self,enc_states, batch_tgt):
         loss = chainer.Variable(self.xp.zeros((), dtype = self.xp.float32))
         predicts = list()
-        for word in batch_tgt:
+        for previous_wordID, word in enumerate(batch_tgt[1:]):
             previous_hidden = self.gru.h
-            embedding = self.word2embedding(word)
+            embedding = self.word2embedding(batch_tgt[previous_wordID])
             context = self.attention(previous_hidden, enc_states)
             hidden = self.gru(embedding, context)
             t = self.U_o(previous_hidden) + self.V_o(embedding) + self.C_o(context)
             t = self.chainFunc.maxout(t, 2)
             score = self.W_o(t)
             predict = chainFunc.argmax(score, axis=1)
+            # ここがずれてる
             loss += chainFunc.softmax_cross_entropy(score, word, ignore_label=-1)
 
             predicts.append(predict.data)
