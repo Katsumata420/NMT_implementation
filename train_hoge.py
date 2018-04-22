@@ -1,83 +1,91 @@
 import argparse
-import utilize as util
-import neural_model
+import utilities as util
+import nmt_model
 import chainer
 import cupy
 import random
 
 def train(args):
     start_epoch = 0
+    corpus_file = args.datadir+'/train.'
 
-    trace('start training...')
-
-    trace('random seed: {}'.format(args.seed_num))
-    np.random.seed(args.seed_num)
-    xp.random.seed(args.seed_num)
-    random.seed(args.seed_num)
+    util.trace('start training...')
 
     chainer.global_config.train = True
     chainer.global_config.use_cudnn = True
     chainer.global_config.type_check = True
-    trace('chainer config: {}'.format(chainer.global_config.__dict__))
+    util.trace('chainer config: {}'.format(chainer.global_config.__dict__))
 
-    trace('load vocab...')
-    source_vocab = util.Vocab.load()
-    target_vocab = util.Vocab.load()
+    util.trace('load vocab...')
+    vocab_file = args.datadir+'/vocabulary.'
+    source_vocab = util.Vocabulary.load(vocab_file+args.sourcelang)
+    target_vocab = util.Vocabulary.load(vocab_file+args.targetlang)
+
     if args.gensim == 'make':
-        trace('making word2vec...')
-        source_word2vec = util.Embedding.make()
-        target_word2vec = util.Embedding.make()
-        source_word2vec.save()
-        target_word2vec.save()
+        util.trace('making word2vec...')
+        src_word2vec = util.make_word2vec(corpus_file+args.sourcelang, args.edim)
+        tgt_word2vec = util.make_word2vec(corpus_file+args.targetlang, args.edim)
+        util.save(src_word2vec, args.datadir+'/src_word2vec.'+args.sourcelang)
+        util.save(tgt_word2vec, args.datadir+'/tgt_word2vec.'+args.targetlang)
     elif args.gensim == 'load':
-        trace('loading word2vec...')
-        source_word2vec = util.Embedding.load()
-        target_word2vec = util.Embedding.load()
+        util.trace('loading word2vec...')
+        src_word2vec = util.load_word2vec(args.datadir+'/src_word2vec.'+args.sourcelang)
+        tgt_word2vec = util.load_word2vec(args.datadir+'/tgt_word2vec.'+args.targetlang)
     elif args.gensim == 'not':
-        trace('do not use word2vec')
-        source_word2vec = None
-        target_word2vec = None
+        util.trace('do not use word2vec')
+        src_word2vec = None
+        tgt_word2vec = None
     
-    trace('making model...')
+    util.trace('making model...')
     #initialize model
-    nmt_model = neural_model.hogehoge 
+    nmt_model = nmt_model.BahdanauNMT(source_vocab, target_vocab, args, src_word2vec, tgt_word2vec)
+
     if args.gpunum >= 0:
         import cupy as xp
-        cuda.check_cuda_available() 
-        cuda.get_device(args.gpunum).use()
+        chainer.cuda.check_cuda_available() 
+        chainer.cuda.get_device(args.gpunum).use()
         nmt_model.to_gpu()
-        trace('use GPU id: {}'.format(args.gpunum))
+        util.trace('use GPU id: {}'.format(args.gpunum))
     else:
         import numpy as xp
         args.gpunum = -1
-        trace('without GPU')
+        util.trace('without GPU')
+    
+    util.trace('random seed: {}'.format(args.seed_num))
+    np.random.seed(args.seed_num)
+    xp.random.seed(args.seed_num)
+    random.seed(args.seed_num)
 
     optim = args.optim
+    #this is change
+    optim = chainer.optimizers.AdaGrad(lr=args.lr)
     optim.setup(nmt_model)
     optim.add_hook(chainer.optimizer.GradientClipping(args.grad_clip))
 
     for epoch in range(start_epoch, args.epoch):
-        trace('Epoch {}/{}'.format(epoch+1. args.epoch))
+        util.trace('Epoch {}/{}'.format(epoch+1. args.epoch))
         accum_loss = 0.0
         num_sent = 0
-        for batch_src, batch_tgt in util.make_batch(hoge):
+        for batch_src, batch_tgt in util.miniBatch(corpus_file+args.sourcelang, corpus_file+args.targetlang,\
+                                    source_vocab, target_vocab, args.batch, args.pooling):
             nmt_model.zerograds()
             loss, batch_hyp = nmt_model(batch_src, batch_tgt)
             accum_loss += loss.data
             loss.backward()
             optim.update()
 
-            for src, tgt, hyp in convert batch to sents:
-                trace('Epoch {}/{}, {} sent'.format(epoch+1, args.epoch, num_sent+1))
-                trace('src: {}'.format(src))
-                trace('tgt: {}'.format(tgt))
-                trace('hyp: {}'.format(hyp))
+            for src, tgt, hyp in zip(convert_b2w(batch_src, source_vocab), convert_b2w(batch_tgt, target_vocab), \
+                convert_b2w(batch_hyp, target_vocab)):
+                util.trace('Epoch {}/{}, {} sent'.format(epoch+1, args.epoch, num_sent+1))
+                util.trace('src: {}'.format(src))
+                util.trace('tgt: {}'.format(tgt))
+                util.trace('hyp: {}'.format(hyp))
                 num_sent += 1
-        trace('accum_loss: {}'.format(accum_loss))
-        trace('Save model ...')
+        util.trace('accum_loss: {}'.format(accum_loss))
+        util.trace('Save model ...')
         model_name = '{}.{03d}'.format(args.name, epoch+1)
-        chainer.serializers.save_npz('{}.weights'.format(model_name), nmt)
-        chainer.serializers.save_npz('{}.optimizer'.format(model_name), optim)
+        chainer.serializers.save_npz(args.savedir+'/{}.weights'.format(model_name), nmt)
+        chainer.serializers.save_npz(args.savedir+'/{}.optimizer'.format(model_name), optim)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(usage='sorry, look at readme.', description='arg description', epilog='end')
@@ -110,4 +118,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     train(args)
-    trace('finish training!')
+    util.trace('finish training!')

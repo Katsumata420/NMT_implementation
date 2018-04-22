@@ -61,6 +61,8 @@ def save_word2vec(model, save_path):
 def load_word2vec(path):
     return word2vec.Word2Vec.load(path)
 
+def convert_b2w(batch, vocab):
+     
 
 def gen_Npairs(src_corpus, tgt_corpus, src_vocab, tgt_vocab, N):
     with open(src_corpus) as src, open(tgt_corpus) as tgt:
