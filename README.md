@@ -1,1 +1,3 @@
-# NMT_implementation
+# NMT_implementation  
+ここにNMT モデルの再実装をあげていく予定です。  
+なお今は絶賛実装中ですので少々お待ちください。
