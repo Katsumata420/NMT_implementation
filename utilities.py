@@ -62,7 +62,15 @@ def load_word2vec(path):
     return word2vec.Word2Vec.load(path)
 
 def convert_b2w(batch, vocab):
-     
+    for sentence in list(chainer.cuda.to_cup(chainFunc.transpose(chainFunc.vstack(batch)).data)):
+        word_list = list()
+        for i in list(sentence):
+            word_list.append(vocab.id2word[i])
+        if '<eos>' in word_list:
+            yield ' '.join(word_list[:word_list.index('<eos>')])
+        else:
+            yield ' '.join(word_list)
+
 
 def gen_Npairs(src_corpus, tgt_corpus, src_vocab, tgt_vocab, N):
     with open(src_corpus) as src, open(tgt_corpus) as tgt:
