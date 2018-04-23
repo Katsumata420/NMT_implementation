@@ -85,7 +85,7 @@ class GRUDecoder(chainer.Chain):
             self.V_o = chainLinks.Linear(args.edim, args.nhid)
             self.C_o = chainLinks.Linear(2*args.nhid, args.nhid)
             self.W_o = chainLinks.Linear(args.nhid, args.nhid//2)
-            self.attention = addictiveAttention(args.nhid)
+            self.attention = additiveAttention(args.nhid)
         
         if tgt_w2v is not None:
             for i in range(tgt_vocab.size):
@@ -139,9 +139,9 @@ class GRUDecoder(chainer.Chain):
         self.gru.reset_state()
 
         
-class addictiveAttention(chainer.Chain):
+class additiveAttention(chainer.Chain):
     def __init__(self):
-        super(addictiveAttention, self, hidden_size).__init__()
+        super(additiveAttention, self, hidden_size).__init__()
         with self.init_scope():
             self.W_a = chainLinks(hidden_size, hidden_size)
             self.U_a = chainLinks(2*hidden_size, hidden_size)
