@@ -9,6 +9,31 @@ import random
 from gensim.models import word2vec
 
 class Vocabulary:
+    def make(file_path, vocab_size):
+        self = Vocabulary()
+        self.word2id = collections.defaultdict(int)
+        self.id2word = dict()
+        with open(file_path) as i_f:
+            word_frequency = collecitons.defaultdict(int)
+            for line in i_f:
+                for word in line.strip().split():
+                    word_frequency[word] += 1
+        self.word2id['<unk>'] = 0
+        self.word2id['<bos>'] = 1
+        self.word2id['<eos>'] = 2
+        self.word2id[''] = -1
+        self.id2word[0] = '<unk>'
+        self.id2word[1] = '<bos>'
+        self.id2word[2] = '<eos>'
+        self.id2word[-1] = ''
+        for i, (word, freq) in zip(range(vocab_size-3), \
+            sorted(sorted(word_frequency.items()), key=lambda x:x[1], reverse=True)):
+            self.word2id[word] = i + 3
+            self.id2word[i] = word
+        self.size = len(self.word2id) - 1
+
+        return self
+
     def load(file_path):
         self = Vocabulary()
         self.word2id = collections.defaultdict(int)
@@ -70,7 +95,6 @@ def convert_b2w(batch, vocab):
             yield ' '.join(word_list[:word_list.index('<eos>')])
         else:
             yield ' '.join(word_list)
-
 
 def gen_Npairs(src_corpus, tgt_corpus, src_vocab, tgt_vocab, N):
     with open(src_corpus) as src, open(tgt_corpus) as tgt:
