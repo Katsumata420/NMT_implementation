@@ -21,17 +21,17 @@ def train(args):
     source_vocab = util.Vocabulary.load(vocab_file+args.sourcelang)
     target_vocab = util.Vocabulary.load(vocab_file+args.targetlang)
 
-    if args.gensim == 'make':
+    if args.gensim_mode == 'make':
         util.trace('making word2vec...')
         src_word2vec = util.make_word2vec(corpus_file+args.sourcelang, args.edim)
         tgt_word2vec = util.make_word2vec(corpus_file+args.targetlang, args.edim)
         util.save(src_word2vec, args.datadir+'/src_word2vec.'+args.sourcelang)
         util.save(tgt_word2vec, args.datadir+'/tgt_word2vec.'+args.targetlang)
-    elif args.gensim == 'load':
+    elif args.gensim_mode == 'load':
         util.trace('loading word2vec...')
         src_word2vec = util.load_word2vec(args.datadir+'/src_word2vec.'+args.sourcelang)
         tgt_word2vec = util.load_word2vec(args.datadir+'/tgt_word2vec.'+args.targetlang)
-    elif args.gensim == 'not':
+    elif args.gensim_mode == 'not':
         util.trace('do not use word2vec')
         src_word2vec = None
         tgt_word2vec = None
@@ -93,13 +93,13 @@ if __name__ == '__main__':
     parser.add_argument('targetlang')
     parser.add_argument('-datadir', help='data directory to use corpus and vocab', default='')
     parser.add_argument('-savedir', help='save directory for weight', default='')
-    parser.add_argument('-model', help='model for neural MT', default='bahdanau')
+    #parser.add_argument('-model', help='model for neural MT', default='bahdanau')
     parser.add_argument('-edim', help='embedding size for model'. type=int, default=512)
     parser.add_argument('-nhid', help='hidden size for model'. type=int, default=512)
     parser.add_argument('-gensim_mode', help='use gensim for embedding, make, load, or not?'. default='not', choices=['make', 'load', 'not'])
-    parser.add_argument('-gensimfileS', help='gensim file for source'. default='')
-    parser.add_argument('-gensimfileS', help='gensim file for target'. default='')
-    parser.add_argument('-nlayer', help='hidden layer for model, attention: 1layer using gensim is 2layer without gensim'. type=int, default=2)
+    #parser.add_argument('-gensimfileS', help='gensim file for source'. default='')
+    #parser.add_argument('-gensimfileT', help='gensim file for target'. default='')
+    #parser.add_argument('-nlayer', help='hidden layer for model, attention: 1layer using gensim is 2layer without gensim'. type=int, default=2)
     parser.add_argument('-optim', help='select optimizer', default='AdaGrad')
     parser.add_argument('-lr', help='learning rate for optimizer', type=float, default=0.01)
     parser.add_argument('-gpunum', help='GPU number (negative value is using CPU)', type=int, default=-1)
@@ -109,8 +109,8 @@ if __name__ == '__main__':
     parser.add_argument('-batch', help='batch size', type=int, default=100)
     parser.add_argument('-pooling', help='pooling size', type=int, default=100)
     parser.add_argument('-genlimit', help='generation limit', type=int, default=60)
-    parser.add_argument('-useBeam', help='use beamsearch or not?', action='store_true')
-    parser.add_argument('-beamsize', help='beam size', type=int, default=2)
+    #parser.add_argument('-useBeam', help='use beamsearch or not?', action='store_true')
+    #parser.add_argument('-beamsize', help='beam size', type=int, default=2)
     parser.add_argument('-grad_clip', help='gradient cliping', type=float, default=5.0)
     parser.add_argument('-useSeed', help='use random seed or not?', action='store_true')
     parser.add_argument('-seed_num', help='random seed number', type=int, default=2434)

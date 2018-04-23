@@ -6,10 +6,10 @@ import utility
 
 class BahdanauNMT(chainer.Chain):
     def __init__(self):
-        super(BahdanauNMT, self).__init__()
+        super(BahdanauNMT, self, src_vocab, tgt_vocab, args, src_w2v, tgt_w2v).__init__()
         with self.init_scope():
-            self.encoder = biGRU_encoder()
-            self.decoder = GRUDecoder()
+            self.encoder = biGRU_encoder(src_vocab, args, src_w2v)
+            self.decoder = GRUDecoder(tgt_vocab, args, tgt_w2v)
 
     def __call__(self, batch_src, batch_tgt):
         self.reset_states()
@@ -32,24 +32,32 @@ class BahdanauNMT(chainer.Chain):
         self.decoder.reset_states()
 
 class biGRU_encoder(chainer.Chain):
-    def __init__(self, args):
+    def __init__(self, src_vocab, args, src_w2v):
         super(biGRU_encoder, self).__init__()
         with self.init_scope():
-            self.word2embed = chainLinks.EmbedID()
-            self.embed2hiddenf = chainLinks.GRU()
-            self.embed2hiddenb = chainLinks.GRU()
-        word2vec周りの処理
-        variable init
-        #self.dropoutr = args.dropoutrate
+            self.word2embed = chainLinks.EmbedID(src_vocab.size, args.edim, ignore_label=-1)
+            self.embed2hiddenf = chainLinks.GRU(args.edim, args.nhid)
+            self.embed2hiddenb = chainLinks.GRU(args.edim, args.nhid)
+
+        #embedding weight is intialized by w2v.
+        if src_w2v is not None:
+            for i in range(src_vocab.size):
+                word = src_vocab.id2word[i]
+                if word in src_w2v:
+                    self.word2embed.W.data[i] = src_w2v[word]
+        self.vocab_size = src_vocab.size
+        self.embedding_size = args.edim
+        self.hidden_size = args.nhid
+        self.use_dropout = args.useDropout
+        self.dropoutr = args.dlr
 
     def __call__(self, batch):
         first_states = list()
-        #forward_states = list()
         backward_states = list()
         concate_states = list()
         #filstlayer   
         for word in batch:
-            first_states.append(chainFunc.dropout(self.word2embed(word), self.dropoutr))
+            first_states.append(chainFunc.dropout(self.word2embed(word), ratio=self.dropoutr))
         #backward
         for first_hidden in first_states[::-1]:
             backward_states.append(chainFunc.dropout(self.embed2hiddenb(first_hidden), self.dropoutr))
@@ -68,16 +76,28 @@ class biGRU_encoder(chainer.Chain):
         return self.embed2hiddenb.h
 
 class GRUDecoder(chainer.Chain):
-    def __init__(self):
+    def __init__(self, tgt_vocab, args, tgt_w2v):
         super(LSTMDecoder, self).__init__()
         with self.init_scope():
-            word2embedding = chainLinks.EmbedID(ignore_label=-1)
-            self.gru = BahadanauGRU()
-            self.U_o = chainLinks.Linear()
-            self.V_o = chainLinks.Linear()
-            self.C_o = chainLinks.Linear()
-            self.W_o = chainLinks.Linear()
-            self.attention = addictiveAttention()
+            word2embedding = chainLinks.EmbedID(tgt_vocab.size, args.edim, ignore_label=-1)
+            self.gru = BahadanauGRU(args.edim, args.nhid)
+            self.U_o = chainLinks.Linear(args.nhid, args.nhid)
+            self.V_o = chainLinks.Linear(args.edim, args.nhid)
+            self.C_o = chainLinks.Linear(2*args.nhid, args.nhid)
+            self.W_o = chainLinks.Linear(args.nhid, args.nhid//2)
+            self.attention = addictiveAttention(args.nhid)
+        
+        if tgt_w2v is not None:
+            for i in range(tgt_vocab.size):
+                word = tgt_vocab.id2word[i]
+                if word in tgt_w2v:
+                    self.word2embedding.W.data[i] = tgt_w2v[word]
+        self.vocab_size = tgt_vocab.size
+        self.embedding_size = args.edim
+        self.hidden_size = args.nhid
+        self.use_dropout = args.useDropout
+        self.dropoutr = args.dlr
+        self.gen_limit = args.genlimit
 
     def __call__(self,enc_states, batch_tgt):
         loss = chainer.Variable(self.xp.zeros((), dtype = self.xp.float32))
@@ -86,12 +106,11 @@ class GRUDecoder(chainer.Chain):
             previous_hidden = self.gru.h
             embedding = self.word2embedding(batch_tgt[previous_wordID])
             context = self.attention(previous_hidden, enc_states)
-            hidden = self.gru(embedding, context)
+            hidden = self.chainFunc.dropout(self.gru(embedding, context),self.dropoutr)
             t = self.U_o(previous_hidden) + self.V_o(embedding) + self.C_o(context)
             t = self.chainFunc.maxout(t, 2)
             score = self.W_o(t)
             predict = chainFunc.argmax(score, axis=1)
-            # ここがずれてる
             loss += chainFunc.softmax_cross_entropy(score, word, ignore_label=-1)
 
             predicts.append(predict.data)
@@ -100,7 +119,7 @@ class GRUDecoder(chainer.Chain):
     def generate():
         bos = self.xp.array([bosID]*batch_size, dtype=self.xp.int32)
         predicts = [bos]
-        while len(predicts) < :
+        while len(predicts) < self.gen_limit:
             embedding = self.word2embedding(predicts[-1])
             previous_hidden = self.gru.h
             context = self.attention(previous_hidden, enc_states)
@@ -122,11 +141,11 @@ class GRUDecoder(chainer.Chain):
         
 class addictiveAttention(chainer.Chain):
     def __init__(self):
-        super(addictiveAttention, self).__init__()
+        super(addictiveAttention, self, hidden_size).__init__()
         with self.init_scope():
-            self.W_a = chainLinks()
-            self.U_a = chainLinks()
-            self.V_a = chainLinks()
+            self.W_a = chainLinks(hidden_size, hidden_size)
+            self.U_a = chainLinks(2*hidden_size, hidden_size)
+            self.V_a = chainLinks(hidden_size, 1)
     
     def __call__(self, previous_hidden, enc_states):
         weighted_hidden = self.W_a(previous_hidden)
