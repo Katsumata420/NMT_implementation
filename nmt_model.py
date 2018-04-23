@@ -1,18 +1,19 @@
 import cupy
 import chainer
-import chainer.function as chainFunc
+import chainer.functions as chainFunc
 import chainer.links as chainLinks
-import utility
+import utilities as util
+import cupy as xp
 
 class BahdanauNMT(chainer.Chain):
-    def __init__(self):
-        super(BahdanauNMT, self, src_vocab, tgt_vocab, args, src_w2v, tgt_w2v).__init__()
+    def __init__(self, src_vocab, tgt_vocab, args, src_w2v, tgt_w2v):
+        super(BahdanauNMT, self).__init__()
         with self.init_scope():
             self.encoder = biGRU_encoder(src_vocab, args, src_w2v)
             self.decoder = GRUDecoder(tgt_vocab, args, tgt_w2v)
 
     def __call__(self, batch_src, batch_tgt):
-        self.reset_states()
+        self.reset_state()
         hidden_encoder = self.encoder(batch_src)
         last_h_enc = self.encoder.getHidden()
         self.decoder.setHidden(last_h_enc)
@@ -58,13 +59,17 @@ class biGRU_encoder(chainer.Chain):
         #filstlayer   
         for word in batch:
             first_states.append(chainFunc.dropout(self.word2embed(word), ratio=self.dropoutr))
+        util.trace('first_states length:{}'.format(len(first_states)))
+        util.trace('first state embedding:{}'.format(first_states[0].shape))
         #backward
         for first_hidden in first_states[::-1]:
             backward_states.append(chainFunc.dropout(self.embed2hiddenb(first_hidden), self.dropoutr))
+        util.trace('second state embedding:{}'.format(backward_states[0].shape))
         #cocate(forward,backward)
         for first_hidden, hidden_b in zip(first_states, backward_states[::-1]):
             forward_hidden = chainFunc.dropout(self.embed2hiddenf(first_hidden), self.dropoutr)
             concate_states.append(chainFunc.concat((forward_hidden, hidden_b), axis=1))
+        util.trace('top state embedding:{}'.format(concate_states[0].shape))
         return concate_states
     
     def reset_states(self):
@@ -77,14 +82,14 @@ class biGRU_encoder(chainer.Chain):
 
 class GRUDecoder(chainer.Chain):
     def __init__(self, tgt_vocab, args, tgt_w2v):
-        super(LSTMDecoder, self).__init__()
+        super(GRUDecoder, self).__init__()
         with self.init_scope():
-            word2embedding = chainLinks.EmbedID(tgt_vocab.size, args.edim, ignore_label=-1)
+            self.word2embedding = chainLinks.EmbedID(tgt_vocab.size, args.edim, ignore_label=-1)
             self.gru = BahadanauGRU(args.edim, args.nhid)
             self.U_o = chainLinks.Linear(args.nhid, args.nhid)
             self.V_o = chainLinks.Linear(args.edim, args.nhid)
             self.C_o = chainLinks.Linear(2*args.nhid, args.nhid)
-            self.W_o = chainLinks.Linear(args.nhid, args.nhid//2)
+            self.W_o = chainLinks.Linear(args.nhid//2, tgt_vocab.size)
             self.attention = additiveAttention(args.nhid)
         
         if tgt_w2v is not None:
@@ -105,10 +110,11 @@ class GRUDecoder(chainer.Chain):
         for previous_wordID, word in enumerate(batch_tgt[1:]):
             previous_hidden = self.gru.h
             embedding = self.word2embedding(batch_tgt[previous_wordID])
+            util.trace('embedding size decside: {}'.format(embedding.shape))
             context = self.attention(previous_hidden, enc_states)
-            hidden = self.chainFunc.dropout(self.gru(embedding, context),self.dropoutr)
+            hidden = chainFunc.dropout(self.gru(embedding, context),self.dropoutr)
             t = self.U_o(previous_hidden) + self.V_o(embedding) + self.C_o(context)
-            t = self.chainFunc.maxout(t, 2)
+            t = chainFunc.maxout(t, 2)
             score = self.W_o(t)
             predict = chainFunc.argmax(score, axis=1)
             loss += chainFunc.softmax_cross_entropy(score, word, ignore_label=-1)
@@ -140,18 +146,31 @@ class GRUDecoder(chainer.Chain):
 
         
 class additiveAttention(chainer.Chain):
-    def __init__(self):
-        super(additiveAttention, self, hidden_size).__init__()
+    def __init__(self, hidden_size):
+        super(additiveAttention, self).__init__()
         with self.init_scope():
-            self.W_a = chainLinks(hidden_size, hidden_size)
-            self.U_a = chainLinks(2*hidden_size, hidden_size)
-            self.V_a = chainLinks(hidden_size, 1)
+            self.W_a = chainLinks.Linear(hidden_size, hidden_size)
+            self.U_a = chainLinks.Linear(2*hidden_size, hidden_size)
+            self.V_a = chainLinks.Linear(hidden_size, 1)
     
     def __call__(self, previous_hidden, enc_states):
         weighted_hidden = self.W_a(previous_hidden)
+        util.trace('W_a calc hidden: {}'.format(weighted_hidden.shape))
         scores = [self.V_a(chainFunc.tanh(weighted_hidden + self.U_a(hidden))) for hidden in enc_states]
-        align = chainFunc.softmax(scores)
-        context = chainFunc.sum(align*enc_states)
+        #ここでbatch*sourcelength*1の形にする
+        scores = chainFunc.stack(scores, axis=1)
+        util.trace('scores type; {}'.format(type(scores)))
+        util.trace('scores length; {}'.format(len(scores)))
+        util.trace('score type; {}'.format(type(scores[0])))
+        util.trace('scores shape: {}'.format(scores.shape))
+        util.trace('score shape; {}'.format(scores[0].shape))
+        align = chainFunc.softmax(scores, axis=1)
+        util.trace('align shape: {}'.format(align.shape))
+        stackenc_hidden = chainFunc.stack(enc_states, axis=1)
+        util.trace('stacking encder state shape: {}'.format(stackenc_hidden.shape))
+        align_cast = chainFunc.broadcast_to(align, stackenc_hidden.shape)
+        util.trace('align cast shape: {}'.format(align_cast.shape))
+        context = chainFunc.sum(align_cast*stackenc_hidden, axis=1)
         return context
         
 

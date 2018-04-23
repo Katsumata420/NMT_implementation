@@ -4,6 +4,7 @@ import nmt_model
 import chainer
 import cupy
 import random
+import numpy as np
 
 def train(args):
     start_epoch = 0
@@ -12,7 +13,7 @@ def train(args):
     util.trace('start training...')
 
     chainer.global_config.train = True
-    chainer.global_config.use_cudnn = True
+    chainer.global_config.use_cudnn = 'always'
     chainer.global_config.type_check = True
     util.trace('chainer config: {}'.format(chainer.global_config.__dict__))
 
@@ -38,13 +39,13 @@ def train(args):
     
     util.trace('making model...')
     #initialize model
-    nmt_model = nmt_model.BahdanauNMT(source_vocab, target_vocab, args, src_word2vec, tgt_word2vec)
+    NMTmodel = nmt_model.BahdanauNMT(source_vocab, target_vocab, args, src_word2vec, tgt_word2vec)
 
     if args.gpunum >= 0:
         import cupy as xp
         chainer.cuda.check_cuda_available() 
         chainer.cuda.get_device(args.gpunum).use()
-        nmt_model.to_gpu()
+        NMTmodel.to_gpu()
         util.trace('use GPU id: {}'.format(args.gpunum))
     else:
         import numpy as xp
@@ -59,23 +60,23 @@ def train(args):
     optim = args.optim
     #this is change
     optim = chainer.optimizers.AdaGrad(lr=args.lr)
-    optim.setup(nmt_model)
+    optim.setup(NMTmodel)
     optim.add_hook(chainer.optimizer.GradientClipping(args.grad_clip))
 
     for epoch in range(start_epoch, args.epoch):
-        util.trace('Epoch {}/{}'.format(epoch+1. args.epoch))
+        util.trace('Epoch {}/{}'.format(epoch+1, args.epoch))
         accum_loss = 0.0
         num_sent = 0
         for batch_src, batch_tgt in util.miniBatch(corpus_file+args.sourcelang, corpus_file+args.targetlang,\
                                     source_vocab, target_vocab, args.batch, args.pooling):
-            nmt_model.zerograds()
-            loss, batch_hyp = nmt_model(batch_src, batch_tgt)
+            NMTmodel.zerograds()
+            loss, batch_hyp = NMTmodel(batch_src, batch_tgt)
             accum_loss += loss.data
             loss.backward()
             optim.update()
 
-            for src, tgt, hyp in zip(convert_b2w(batch_src, source_vocab), convert_b2w(batch_tgt, target_vocab), \
-                convert_b2w(batch_hyp, target_vocab)):
+            for src, tgt, hyp in zip(util.convert_b2w(batch_src, source_vocab), util.convert_b2w(batch_tgt, target_vocab), \
+                util.convert_b2w(batch_hyp, target_vocab)):
                 util.trace('Epoch {}/{}, {} sent'.format(epoch+1, args.epoch, num_sent+1))
                 util.trace('src: {}'.format(src))
                 util.trace('tgt: {}'.format(tgt))
@@ -83,7 +84,7 @@ def train(args):
                 num_sent += 1
         util.trace('accum_loss: {}'.format(accum_loss))
         util.trace('Save model ...')
-        model_name = '{}.{03d}'.format(args.name, epoch+1)
+        model_name = '{}.{:03d}'.format(args.name, epoch+1)
         chainer.serializers.save_npz(args.savedir+'/{}.weights'.format(model_name), nmt)
         chainer.serializers.save_npz(args.savedir+'/{}.optimizer'.format(model_name), optim)
 
@@ -94,9 +95,9 @@ if __name__ == '__main__':
     parser.add_argument('-datadir', help='data directory to use corpus and vocab', default='')
     parser.add_argument('-savedir', help='save directory for weight', default='')
     #parser.add_argument('-model', help='model for neural MT', default='bahdanau')
-    parser.add_argument('-edim', help='embedding size for model'. type=int, default=512)
-    parser.add_argument('-nhid', help='hidden size for model'. type=int, default=512)
-    parser.add_argument('-gensim_mode', help='use gensim for embedding, make, load, or not?'. default='not', choices=['make', 'load', 'not'])
+    parser.add_argument('-edim', help='embedding size for model', type=int, default=512)
+    parser.add_argument('-nhid', help='hidden size for model', type=int, default=512)
+    parser.add_argument('-gensim_mode', help='use gensim for embedding, make, load, or not?', default='not', choices=['make', 'load', 'not'])
     #parser.add_argument('-gensimfileS', help='gensim file for source'. default='')
     #parser.add_argument('-gensimfileT', help='gensim file for target'. default='')
     #parser.add_argument('-nlayer', help='hidden layer for model, attention: 1layer using gensim is 2layer without gensim'. type=int, default=2)

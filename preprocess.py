@@ -1,5 +1,7 @@
 import utilities as util
 import argparse
+import collections
+from gensim.models import word2vec
 
 def preprocess(args):
     #tokenize
@@ -7,10 +9,16 @@ def preprocess(args):
     #ここまでで作成したtraining corpusをどっか保存しておく
     #した二つはその作成したcorpusに対して実行する
     #vocab
+    #src_corpus = args.savedir+'/train.'+args.sourcelang
+    #tgt_corpus = args.savedir+'/train.'+args.targetlang
     src_vocab = util.Vocabulary.make(args.savedir+'/train.'+args.sourcelang, args.srcvocab_size)
+    #src_vocab = util.Vocabulary.make(src_corpus, args.srcvocab_size)
     tgt_vocab = util.Vocabulary.make(args.savedir+'/train.'+args.targetlang, args.tgtvocab_size)
-    src_vocab.save(args.savedir+'/vocabulary.'+args.sourcelang)
-    tgt_vocab.save(args.savedir+'/vocabulary.'+args.targetlang)
+    #tgt_vocab = util.Vocabulary.make(tgt_corpus, args.tgtvocab_size)
+    src_vocab_file = args.savedir+'/vocabulary.'+args.sourcelang
+    tgt_vocab_file = args.savedir+'/vocabulary.'+args.targetlang
+    src_vocab.save(src_vocab_file)
+    tgt_vocab.save(tgt_vocab_file)
     #word2vec
     if args.word2vec:
         #default; worker is 5.
