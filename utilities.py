@@ -52,6 +52,7 @@ class Vocabulary:
                 self.word2id[word.strip()] = i+3
                 self.id2word[i+3] = word.strip()
         self.size = i+4
+        trace('vocab size: {}'.format(self.size))
         return self
 
     def save(self, file_path):
@@ -73,7 +74,7 @@ def miniBatch(src_corpus, tgt_corpus, src_vocab, tgt_vocab, batch_size, pooling)
     random.shuffle(batches)
     for mini_batch in batches:
         batch_src = [mini_batch[i][0] for i in range(len(mini_batch))]
-        batch_tgt = [mini_batch[i][0] for i in range(len(mini_batch))]
+        batch_tgt = [mini_batch[i][1] for i in range(len(mini_batch))]
         yield ([chainer.Variable(xp.array(list(x), dtype=xp.int32)) for x in itertools.zip_longest(*batch_src, fillvalue=-1)], 
         [chainer.Variable(xp.array(list(y), dtype=xp.int32)) for y in itertools.zip_longest(*batch_tgt, fillvalue=-1)])
 
@@ -98,6 +99,7 @@ def convert_b2w(batch, vocab):
             yield ' '.join(word_list)
 
 def gen_Npairs(src_corpus, tgt_corpus, src_vocab, tgt_vocab, N):
+    flag = True
     with open(src_corpus) as src, open(tgt_corpus) as tgt:
         Npairs = list()
         for line_src, line_tgt in zip(src, tgt):
