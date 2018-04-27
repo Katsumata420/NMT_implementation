@@ -78,6 +78,14 @@ def miniBatch(src_corpus, tgt_corpus, src_vocab, tgt_vocab, batch_size, pooling)
         yield ([chainer.Variable(xp.array(list(x), dtype=xp.int32)) for x in itertools.zip_longest(*batch_src, fillvalue=-1)], 
         [chainer.Variable(xp.array(list(y), dtype=xp.int32)) for y in itertools.zip_longest(*batch_tgt, fillvalue=-1)])
 
+def monoBatch(corpus_file, vocab, args):
+    with open(corpus_file) as i_f:
+        for line in i_f:
+            wordIDs = [vocab.word2id[word] for word in line.strip().split()]
+            wordIDs.append(vocab.word2id['<eos>'])
+            yield [chainer.Variable(xp.array([x], dtype=xp.int32)) for x in wordIDs]
+
+
 def make_word2vec(corpus, embed_size):
     word2vec_model = word2vec.Word2Vec(word2vec.LineSentence(corpus), size=embed_size, min_count=1, workers=5)
     return word2vec_model

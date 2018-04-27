@@ -21,6 +21,11 @@ def train(args):
     vocab_file = args.datadir+'/vocabulary.'
     source_vocab = util.Vocabulary.load(vocab_file+args.sourcelang)
     target_vocab = util.Vocabulary.load(vocab_file+args.targetlang)
+    """
+    util.trace('make vocab...')
+    source_vocab = util.Vocabulary.make(corpus_file+args.sourcelang, 3000)
+    target_vocab = util.Vocabulary.make(corpus_file+args.targetlang, 3000)
+    """
 
     if args.gensim_mode == 'make':
         util.trace('making word2vec...')
@@ -85,7 +90,7 @@ def train(args):
         util.trace('accum_loss: {}'.format(accum_loss))
         util.trace('Save model ...')
         model_name = '{}.{:03d}'.format(args.name, epoch+1)
-        chainer.serializers.save_npz(args.savedir+'/{}.weights'.format(model_name), nmt)
+        chainer.serializers.save_npz(args.savedir+'/{}.weights'.format(model_name), NMTmodel)
         chainer.serializers.save_npz(args.savedir+'/{}.optimizer'.format(model_name), optim)
 
 if __name__ == '__main__':

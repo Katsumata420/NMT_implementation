@@ -21,11 +21,11 @@ class BahdanauNMT(chainer.Chain):
         return loss, hyp
 
     def generate(self, batch_src):
-        self.reset_states()
+        self.reset_state()
         hidden_encoder = self.encoder(batch_src)
         last_h_enc = self.encoder.getHidden()
         self.decoder.setHidden(last_h_enc)
-        hyp = self.decoder(hidden_encoder)
+        hyp = self.decoder.generateHyp(hidden_encoder)
         return hyp
 
     def reset_state(self):
@@ -49,8 +49,13 @@ class biGRU_encoder(chainer.Chain):
         self.vocab_size = src_vocab.size
         self.embedding_size = args.edim
         self.hidden_size = args.nhid
-        self.use_dropout = args.useDropout
-        self.dropoutr = args.dlr
+        if args.useDropout:
+            self.use_dropout = args.useDropout
+            self.dropoutr = args.dlr
+        else:
+            self.use_dropout = None
+            self.dropoutr = 0
+            util.trace('{}'.format(chainer.global_config.__dict__))
 
     def __call__(self, batch):
         first_states = list()
@@ -59,17 +64,17 @@ class biGRU_encoder(chainer.Chain):
         #filstlayer   
         for word in batch:
             first_states.append(chainFunc.dropout(self.word2embed(word), ratio=self.dropoutr))
-        util.trace('first_states length:{}'.format(len(first_states)))
-        util.trace('first state embedding:{}'.format(first_states[0].shape))
+        #util.trace('first_states length:{}'.format(len(first_states)))
+        #util.trace('first state embedding:{}'.format(first_states[0].shape))
         #backward
         for first_hidden in first_states[::-1]:
             backward_states.append(chainFunc.dropout(self.embed2hiddenb(first_hidden), self.dropoutr))
-        util.trace('second state embedding:{}'.format(backward_states[0].shape))
+        #util.trace('second state embedding:{}'.format(backward_states[0].shape))
         #cocate(forward,backward)
         for first_hidden, hidden_b in zip(first_states, backward_states[::-1]):
             forward_hidden = chainFunc.dropout(self.embed2hiddenf(first_hidden), self.dropoutr)
             concate_states.append(chainFunc.concat((forward_hidden, hidden_b), axis=1))
-        util.trace('top state embedding:{}'.format(concate_states[0].shape))
+        #util.trace('top state embedding:{}'.format(concate_states[0].shape))
         return concate_states
     
     def reset_states(self):
@@ -100,17 +105,22 @@ class GRUDecoder(chainer.Chain):
         self.vocab_size = tgt_vocab.size
         self.embedding_size = args.edim
         self.hidden_size = args.nhid
-        self.use_dropout = args.useDropout
-        self.dropoutr = args.dlr
         self.gen_limit = args.genlimit
+        if args.useDropout:
+            self.use_dropout = args.useDropout
+            self.dropoutr = args.dlr
+        else:
+            self.use_dropout = None
+            self.dropoutr = 0
+            util.trace('{}'.format(chainer.global_config.__dict__))
 
-    def __call__(self,enc_states, batch_tgt):
+    def __call__(self, enc_states, batch_tgt):
         loss = chainer.Variable(self.xp.zeros((), dtype = self.xp.float32))
         predicts = list()
         for previous_wordID, word in enumerate(batch_tgt[1:]):
             previous_hidden = self.gru.h
             embedding = self.word2embedding(batch_tgt[previous_wordID])
-            util.trace('embedding size decside: {}'.format(embedding.shape))
+            #util.trace('embedding size decside: {}'.format(embedding.shape))
             context = self.attention(previous_hidden, enc_states)
             hidden = chainFunc.dropout(self.gru(embedding, context),self.dropoutr)
             t = self.U_o(previous_hidden) + self.V_o(embedding) + self.C_o(context)
@@ -122,20 +132,22 @@ class GRUDecoder(chainer.Chain):
             predicts.append(predict.data)
         return loss, predicts
 
-    def generate():
-        bos = self.xp.array([bosID]*batch_size, dtype=self.xp.int32)
+    def generateHyp(self, enc_states):
+        bosID = 1
+        bos = self.xp.array([bosID], dtype=self.xp.int32)
         predicts = [bos]
-        while len(predicts) < self.gen_limit:
+        while len(predicts)-1 < self.gen_limit:
             embedding = self.word2embedding(predicts[-1])
             previous_hidden = self.gru.h
             context = self.attention(previous_hidden, enc_states)
             hidden = self.gru(embedding, context)
             t = self.U_o(previous_hidden) + self.V_o(embedding) + self.C_o(context)
-            t = self.chainFunc.maxout(t, 2)
+            t = chainFunc.maxout(t, 2)
             score = self.W_o(t)
             predict = chainFunc.argmax(score, axis=1)
 
             predicts.append(predict)
+        del predicts[0]
         return predicts
     
     def setHidden(self, h):
@@ -155,21 +167,23 @@ class additiveAttention(chainer.Chain):
     
     def __call__(self, previous_hidden, enc_states):
         weighted_hidden = self.W_a(previous_hidden)
-        util.trace('W_a calc hidden: {}'.format(weighted_hidden.shape))
+        #util.trace('W_a calc hidden: {}'.format(weighted_hidden.shape))
         scores = [self.V_a(chainFunc.tanh(weighted_hidden + self.U_a(hidden))) for hidden in enc_states]
         #ここでbatch*sourcelength*1の形にする
         scores = chainFunc.stack(scores, axis=1)
+        """
         util.trace('scores type; {}'.format(type(scores)))
         util.trace('scores length; {}'.format(len(scores)))
         util.trace('score type; {}'.format(type(scores[0])))
         util.trace('scores shape: {}'.format(scores.shape))
         util.trace('score shape; {}'.format(scores[0].shape))
+        """
         align = chainFunc.softmax(scores, axis=1)
-        util.trace('align shape: {}'.format(align.shape))
+        #util.trace('align shape: {}'.format(align.shape))
         stackenc_hidden = chainFunc.stack(enc_states, axis=1)
-        util.trace('stacking encder state shape: {}'.format(stackenc_hidden.shape))
+        #util.trace('stacking encder state shape: {}'.format(stackenc_hidden.shape))
         align_cast = chainFunc.broadcast_to(align, stackenc_hidden.shape)
-        util.trace('align cast shape: {}'.format(align_cast.shape))
+        #util.trace('align cast shape: {}'.format(align_cast.shape))
         context = chainFunc.sum(align_cast*stackenc_hidden, axis=1)
         return context
         
